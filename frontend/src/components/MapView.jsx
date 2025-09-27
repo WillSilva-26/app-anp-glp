@@ -1,165 +1,131 @@
-// src/components/MapView.jsx
-import { useEffect, useState } from "react";
-import { MapContainer, TileLayer, Marker, Popup, useMap } from "react-leaflet";
-import "leaflet/dist/leaflet.css";
+import React, { useEffect, useState } from "react";
+import { MapContainer, TileLayer, Marker, Popup } from "react-leaflet";
 import L from "leaflet";
-
+import "leaflet/dist/leaflet.css";
 import Filters from "./Filters";
-import SearchCNPJ from "./SearchCNPJ";
 
-// Corrige o ícone padrão do Leaflet
-delete L.Icon.Default.prototype._getIconUrl;
-L.Icon.Default.mergeOptions({
-  iconRetinaUrl:
-    "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png",
-  iconUrl:
-    "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png",
-  shadowUrl:
-    "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png",
+// Ícone customizado para os marcadores
+const markerIcon = new L.Icon({
+  iconUrl: "https://cdn-icons-png.flaticon.com/512/684/684908.png",
+  iconSize: [32, 32],
+  iconAnchor: [16, 32],
+  popupAnchor: [0, -32],
 });
 
-// Coordenadas aproximadas dos estados do Brasil
-const stateCenters = {
-  AC: [-8.77, -70.55],
-  AL: [-9.71, -35.73],
-  AM: [-3.07, -61.66],
-  AP: [1.41, -51.77],
-  BA: [-12.96, -38.51],
-  CE: [-3.71, -38.54],
-  DF: [-15.83, -47.86],
-  ES: [-19.19, -40.34],
-  GO: [-16.64, -49.31],
-  MA: [-2.55, -44.30],
-  MG: [-18.10, -44.38],
-  MS: [-20.51, -54.54],
-  MT: [-12.64, -55.42],
-  PA: [-5.53, -52.29],
-  PB: [-7.24, -35.91],
-  PE: [-8.28, -35.07],
-  PI: [-8.28, -43.68],
-  PR: [-24.89, -51.55],
-  RJ: [-22.90, -43.20],
-  RN: [-5.81, -36.59],
-  RO: [-11.22, -62.80],
-  RR: [1.99, -61.33],
-  RS: [-30.01, -51.22],
-  SC: [-27.33, -49.44],
-  SE: [-10.90, -37.07],
-  SP: [-23.55, -46.64],
-  TO: [-10.25, -48.25],
-};
-
-// Componente para mudar a posição do mapa quando o filtro muda
-function ChangeMapView({ center }) {
-  const map = useMap();
-  useEffect(() => {
-    if (center) {
-      map.setView(center, 7); // Zoom ajustado para o estado
-    }
-  }, [center, map]);
-  return null;
-}
-
-export default function MapView() {
+function MapView() {
   const [revendas, setRevendas] = useState([]);
-  const [meta, setMeta] = useState({ progresso: 0, ultimaAtualizacao: null });
-  const [filters, setFilters] = useState({ estado: "", municipio: "" });
-  const [position, setPosition] = useState([-14.235, -51.9253]); // Centro do Brasil
+  const [meta, setMeta] = useState({ ultimaAtualizacao: null, progresso: 0 });
+  const [filtros, setFiltros] = useState({});
+  const backendUrl = import.meta.env.VITE_BACKEND_URL; // 👈 pega do .env
 
-  // Busca dados de revendas
+  // Buscar dados das revendas
   useEffect(() => {
-    fetch(`${import.meta.env.VITE_BACKEND_URL}/api/revendas`)
-      .then((res) => res.json())
-      .then(setRevendas)
-      .catch((err) => console.error("Erro ao carregar revendas:", err));
-  }, []);
+    const fetchRevendas = async () => {
+      try {
+        const params = new URLSearchParams(filtros).toString();
+        const res = await fetch(`${backendUrl}/revendas?${params}`);
+        const data = await res.json();
+        setRevendas(data);
+      } catch (error) {
+        console.error("Erro ao carregar revendas:", error);
+      }
+    };
 
-  // Busca status/meta
+    fetchRevendas();
+  }, [filtros, backendUrl]);
+
+  // Buscar metadados (atualização + progresso)
   useEffect(() => {
-    const interval = setInterval(() => {
-      fetch(`${import.meta.env.VITE_BACKEND_URL}/api/meta`)
-        .then((res) => res.json())
-        .then(setMeta)
-        .catch((err) => console.error("Erro ao carregar meta:", err));
-    }, 5000);
+    const fetchMeta = async () => {
+      try {
+        const res = await fetch(`${backendUrl}/meta`);
+        const data = await res.json();
+        setMeta(data);
+      } catch (error) {
+        console.error("Erro ao carregar meta:", error);
+      }
+    };
 
+    fetchMeta();
+    const interval = setInterval(fetchMeta, 5000);
     return () => clearInterval(interval);
-  }, []);
+  }, [backendUrl]);
 
-  // Atualiza centro do mapa conforme filtro
-  useEffect(() => {
-    if (filters.estado && stateCenters[filters.estado]) {
-      setPosition(stateCenters[filters.estado]);
-    }
-  }, [filters.estado]);
-
-  // Aplica filtros nas revendas
-  const filteredRevendas = revendas.filter((r) => {
-    return (
-      (!filters.estado || r.uf === filters.estado) &&
-      (!filters.municipio ||
-        r.municipio.toLowerCase().includes(filters.municipio.toLowerCase()))
-    );
-  });
+  const position = [-14.235, -51.925]; // centro aproximado do Brasil
 
   return (
-    <div style={{ position: "relative" }}>
-      {/* Filtros e Busca */}
-      <Filters onChange={setFilters} />
-      <SearchCNPJ revendas={revendas} />
-
-      {/* Caixa de informações de atualização */}
+    <div style={{ height: "100vh", width: "100%" }}>
+      {/* Barra superior com atualização e progresso */}
       <div
         style={{
           position: "absolute",
-          top: 70,
-          left: 10,
+          top: 10,
+          right: 10,
           zIndex: 1000,
           background: "white",
           padding: "10px",
           borderRadius: "8px",
-          boxShadow: "0px 0px 6px rgba(0,0,0,0.2)",
+          boxShadow: "0 2px 6px rgba(0,0,0,0.2)",
         }}
       >
         <p>
-          <strong>Última atualização:</strong>{" "}
+          Última atualização:{" "}
           {meta.ultimaAtualizacao
             ? new Date(meta.ultimaAtualizacao).toLocaleString()
             : "Carregando..."}
         </p>
-        <p>
-          <strong>Progresso:</strong> {meta.progresso}%
-        </p>
+        <p>Progresso: {meta.progresso}%</p>
+        {meta.progresso === 100 && (
+          <button onClick={() => window.location.reload()}>
+            🔄 Atualizar mapa
+          </button>
+        )}
       </div>
+
+      {/* Filtros */}
+      <Filters onFilterChange={setFiltros} />
 
       {/* Mapa */}
       <MapContainer
         center={position}
         zoom={5}
-        style={{ height: "600px", width: "100%" }}
+        style={{ height: "100%", width: "100%" }}
       >
         <TileLayer
+          attribution='&copy; <a href="http://osm.org/copyright">OpenStreetMap</a>'
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-          attribution="&copy; OpenStreetMap contributors"
         />
-        <ChangeMapView center={position} />
-        {filteredRevendas.map((revenda, idx) =>
-          revenda.latitude && revenda.longitude ? (
-            <Marker
-              key={idx}
-              position={[revenda.latitude, revenda.longitude]}
-            >
-              <Popup>
-                <strong>{revenda.razao_social}</strong> <br />
-                CNPJ: {revenda.cnpj} <br />
-                Classe: {revenda.classe} <br />
-                Endereço: {revenda.rua}, {revenda.bairro}, {revenda.municipio} -{" "}
-                {revenda.uf}, CEP {revenda.cep}
-              </Popup>
-            </Marker>
-          ) : null
-        )}
+        {revendas.map((revenda, idx) => (
+          <Marker
+            key={idx}
+            position={[revenda.latitude, revenda.longitude]}
+            icon={markerIcon}
+          >
+            <Popup>
+              <b>{revenda.razao_social}</b> <br />
+              {revenda.rua}, {revenda.bairro} <br />
+              {revenda.municipio} - {revenda.uf} <br />
+              <a
+                href={`https://www.google.com/maps/dir/?api=1&destination=${revenda.latitude},${revenda.longitude}`}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                📍 Abrir no Google Maps
+              </a>
+              <br />
+              <a
+                href={`https://waze.com/ul?ll=${revenda.latitude},${revenda.longitude}&navigate=yes`}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                🚗 Abrir no Waze
+              </a>
+            </Popup>
+          </Marker>
+        ))}
       </MapContainer>
     </div>
   );
 }
+
+export default MapView;
