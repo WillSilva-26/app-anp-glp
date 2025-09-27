@@ -1,86 +1,62 @@
-import React, { useState } from "react";
-import Filters from "./components/Filters.jsx";
-import SearchCNPJ from "./components/SearchCNPJ.jsx";
-import MapView from "./components/MapView.jsx";
+import React, { useState, useEffect } from "react";
+import MapView from "./components/MapView";
+import Filters from "./components/Filters";
+import SearchCNPJ from "./components/SearchCNPJ";
 
 function App() {
-  const [filters, setFilters] = useState({ estado: "", municipio: "", cnpj: "" });
+  const [revendas, setRevendas] = useState([]);
+  const [meta, setMeta] = useState({ progresso: 0, ultimaAtualizacao: null });
+  const [filtros, setFiltros] = useState({ estado: "", municipio: "", cnpj: "" });
 
-  const handleFilterChange = (newFilters) => {
-    setFilters((prev) => ({ ...prev, ...newFilters }));
+  // Carrega dados do backend
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const resRevendas = await fetch(`${import.meta.env.VITE_BACKEND_URL}/api/revendas`);
+        const dataRevendas = await resRevendas.json();
+        setRevendas(dataRevendas);
+
+        const resMeta = await fetch(`${import.meta.env.VITE_BACKEND_URL}/api/meta`);
+        const dataMeta = await resMeta.json();
+        setMeta(dataMeta);
+      } catch (err) {
+        console.error("Erro ao carregar dados:", err);
+      }
+    };
+    fetchData();
+  }, []);
+
+  // Gera lista de estados únicos
+  const estados = [...new Set(revendas.map((r) => r.uf))].sort();
+
+  // Gera lista de municípios baseados no estado selecionado
+  const municipios = filtros.estado
+    ? [...new Set(revendas.filter((r) => r.uf === filtros.estado).map((r) => r.municipio))].sort()
+    : [];
+
+  // Atualiza filtros
+  const handleChange = (e) => {
+    setFiltros({ ...filtros, [e.target.name]: e.target.value });
   };
 
-  return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100vh" }}>
-      {/* 🔎 Barra de filtros e status */}
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "flex-start",
-          padding: "10px",
-          background: "#f5f5f5",
-          borderBottom: "1px solid #ccc",
-          zIndex: 1000,
-        }}
-      >
-        {/* Filtros e busca */}
-        <div style={{ display: "flex", gap: "15px" }}>
-          <Filters onChange={handleFilterChange} />
-          <SearchCNPJ onChange={handleFilterChange} />
-        </div>
-
-        {/* Status de atualização */}
-        <div
-          style={{
-            padding: "5px 15px",
-            background: "white",
-            border: "1px solid #ccc",
-            borderRadius: "8px",
-            fontSize: "14px",
-            textAlign: "right",
-          }}
-        >
-          <StatusInfo />
-        </div>
-      </div>
-
-      {/* 🗺️ Mapa */}
-      <div style={{ flex: 1 }}>
-        <MapView filters={filters} />
-      </div>
-    </div>
-  );
-}
-
-// 🔔 Componente para status (última atualização + progresso)
-function StatusInfo() {
-  const [meta, setMeta] = React.useState({ progresso: 0, ultimaAtualizacao: null });
-
-  React.useEffect(() => {
-    async function fetchMeta() {
-      try {
-        const res = await fetch(`${import.meta.env.VITE_BACKEND_URL}/api/meta`);
-        const data = await res.json();
-        setMeta(data);
-      } catch (err) {
-        console.error("Erro ao buscar meta:", err);
-      }
-    }
-    fetchMeta();
-    const interval = setInterval(fetchMeta, 5000); // Atualiza a cada 5s
-    return () => clearInterval(interval);
-  }, []);
+  // Filtra revendas
+  const revendasFiltradas = revendas.filter((r) => {
+    if (filtros.estado && r.uf !== filtros.estado) return false;
+    if (filtros.municipio && r.municipio !== filtros.municipio) return false;
+    if (filtros.cnpj && !r.cnpj.includes(filtros.cnpj)) return false;
+    return true;
+  });
 
   return (
     <div>
-      <p>
-        Última atualização:{" "}
-        {meta.ultimaAtualizacao
-          ? new Date(meta.ultimaAtualizacao).toLocaleString()
-          : "Carregando..."}
-      </p>
-      <p>Progresso: {meta.progresso}%</p>
+      <h1>Buscar Revenda GLP</h1>
+
+      {/* Filtros e busca */}
+      <Filters estados={estados} municipios={municipios} filtros={filtros} handleChange={handleChange} />
+      <SearchCNPJ filtros={filtros} setFiltros={setFiltros} />
+
+      {/* Mapa */}
+      <MapView revendas={revendasFiltradas} meta={meta} />
     </div>
   );
 }
