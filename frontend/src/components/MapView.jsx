@@ -1,24 +1,33 @@
-import React, { useState } from "react";
+import { useEffect, useState } from "react";
 import { MapContainer, TileLayer, Marker, Popup } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
-import L from "leaflet";
+import { fetchRevendas, fetchMeta } from "../services/api";
 
-// Ícone customizado
-const markerIcon = new L.Icon({
-  iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
-  shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
-  iconSize: [25, 41],
-  iconAnchor: [12, 41],
-  popupAnchor: [1, -34],
-  shadowSize: [41, 41],
-});
+function MapView({ filtros }) {
+  const [revendas, setRevendas] = useState([]);
+  const [meta, setMeta] = useState({ progresso: 0, ultimaAtualizacao: null });
 
-function MapView({ revendas, meta }) {
-  const [position, setPosition] = useState([-14.235, -51.925]); // Brasil central
+  useEffect(() => {
+    async function carregar() {
+      const dados = await fetchRevendas();
+      setRevendas(dados);
+
+      const info = await fetchMeta();
+      setMeta(info);
+    }
+    carregar();
+  }, []);
+
+  // aplica filtros
+  const revendasFiltradas = revendas.filter((r) => {
+    if (filtros.estado && r.uf !== filtros.estado) return false;
+    if (filtros.municipio && r.municipio !== filtros.municipio) return false;
+    return true;
+  });
 
   return (
     <div style={{ position: "relative" }}>
-      {/* Caixa de status no canto superior direito */}
+      {/* Caixa de informações (última atualização + progresso) */}
       <div
         style={{
           position: "absolute",
@@ -28,7 +37,7 @@ function MapView({ revendas, meta }) {
           background: "white",
           padding: "8px",
           borderRadius: "8px",
-          boxShadow: "0 2px 6px rgba(0,0,0,0.2)",
+          boxShadow: "0px 2px 6px rgba(0,0,0,0.2)",
         }}
       >
         <p>
@@ -40,49 +49,27 @@ function MapView({ revendas, meta }) {
         <p>Progresso: {meta.progresso}%</p>
       </div>
 
+      {/* Mapa */}
       <MapContainer
-        center={position}
+        center={[-15.78, -47.93]} // centro do Brasil
         zoom={5}
-        style={{ height: "600px", width: "100%" }}
-        whenCreated={(map) =>
-          map.locate({ setView: true, maxZoom: 12 }).on("locationfound", (e) => {
-            setPosition([e.latitude, e.longitude]);
-            map.flyTo([e.latitude, e.longitude], 12);
-          })
-        }
+        style={{ height: "500px", width: "100%" }}
       >
         <TileLayer
-          attribution='&copy; <a href="http://osm.org/copyright">OpenStreetMap</a>'
+          attribution='&copy; OpenStreetMap contributors'
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
 
-        {revendas.map((r, i) =>
-          r.latitude && r.longitude ? (
+        {revendasFiltradas.map((revenda, index) =>
+          revenda.latitude && revenda.longitude ? (
             <Marker
-              key={i}
-              position={[r.latitude, r.longitude]}
-              icon={markerIcon}
+              key={index}
+              position={[revenda.latitude, revenda.longitude]}
             >
               <Popup>
-                <b>{r.razao_social}</b> <br />
-                {r.rua}, {r.bairro} <br />
-                {r.municipio} - {r.uf} <br />
-                CNPJ: {r.cnpj} <br />
-                <a
-                  href={`https://www.google.com/maps/search/?api=1&query=${r.latitude},${r.longitude}`}
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  Abrir no Google Maps
-                </a>
-                <br />
-                <a
-                  href={`https://waze.com/ul?ll=${r.latitude},${r.longitude}&navigate=yes`}
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  Abrir no Waze
-                </a>
+                <b>{revenda.razao_social}</b> <br />
+                {revenda.municipio} - {revenda.uf} <br />
+                CNPJ: {revenda.cnpj}
               </Popup>
             </Marker>
           ) : null
